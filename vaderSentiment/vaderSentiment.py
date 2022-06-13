@@ -123,15 +123,9 @@ def allcap_differential(words):
     :param list words: The words to inspect
     :returns: `True` if some but not all items in `words` are ALL CAPS
     """
-    is_different = False
-    allcap_words = 0
-    for word in words:
-        if word.isupper():
-            allcap_words += 1
+    allcap_words = sum(bool(word.isupper()) for word in words)
     cap_differential = len(words) - allcap_words
-    if 0 < cap_differential < len(words):
-        is_different = True
-    return is_different
+    return 0 < cap_differential < len(words)
 
 
 def scalar_inc_dec(word, valence, is_cap_diff):
@@ -188,8 +182,7 @@ class SentiText(object):
             Does not preserve punc-plus-letter emoticons (e.g. :D)
         """
         wes = self.text.split()
-        stripped = list(map(self._strip_punc_if_word, wes))
-        return stripped
+        return list(map(self._strip_punc_if_word, wes))
 
 class SentimentIntensityAnalyzer(object):
     """
@@ -216,7 +209,7 @@ class SentimentIntensityAnalyzer(object):
         for line in self.lexicon_full_filepath.rstrip('\n').split('\n'):
             if not line:
                 continue
-            (word, measure) = line.strip().split('\t')[0:2]
+            (word, measure) = line.strip().split('\t')[:2]
             lex_dict[word] = float(measure)
         return lex_dict
 
@@ -226,7 +219,7 @@ class SentimentIntensityAnalyzer(object):
         """
         emoji_dict = {}
         for line in self.emoji_full_filepath.rstrip('\n').split('\n'):
-            (emoji, description) = line.strip().split('\t')[0:2]
+            (emoji, description) = line.strip().split('\t')[:2]
             emoji_dict[emoji] = description
         return emoji_dict
 
@@ -256,8 +249,8 @@ class SentimentIntensityAnalyzer(object):
 
         sentiments = []
         words_and_emoticons = sentitext.words_and_emoticons
+        valence = 0
         for i, item in enumerate(words_and_emoticons):
-            valence = 0
             # check for vader_lexicon words that may be used as modifiers or negations
             if item.lower() in BOOSTER_DICT:
                 sentiments.append(valence)
@@ -271,9 +264,7 @@ class SentimentIntensityAnalyzer(object):
 
         sentiments = self._but_check(words_and_emoticons, sentiments)
 
-        valence_dict = self.score_valence(sentiments, text)
-
-        return valence_dict
+        return self.score_valence(sentiments, text)
 
     def sentiment_valence(self, valence, sentitext, item, i, sentiments):
         is_cap_diff = sentitext.is_cap_diff
@@ -299,7 +290,7 @@ class SentimentIntensityAnalyzer(object):
                 else:
                     valence -= C_INCR
 
-            for start_i in range(0, 3):
+            for start_i in range(3):
                 # dampen the scalar modifier of preceding words and emoticons
                 # (excluding the ones that immediately preceed the item) based
                 # on their distance from the current item.
@@ -322,7 +313,7 @@ class SentimentIntensityAnalyzer(object):
         # check for negation case using "least"
         if i > 1 and words_and_emoticons[i - 1].lower() not in self.lexicon \
                 and words_and_emoticons[i - 1].lower() == "least":
-            if words_and_emoticons[i - 2].lower() != "at" and words_and_emoticons[i - 2].lower() != "very":
+            if words_and_emoticons[i - 2].lower() not in ["at", "very"]:
                 valence = valence * N_SCALAR
         elif i > 0 and words_and_emoticons[i - 1].lower() not in self.lexicon \
                 and words_and_emoticons[i - 1].lower() == "least":
@@ -394,20 +385,21 @@ class SentimentIntensityAnalyzer(object):
                 print(idiom, senti_text_lower)
                 valence = SENTIMENT_LADEN_IDIOMS[idiom]
                 idioms_valences.append(valence)
-        if len(idioms_valences) > 0:
+        if idioms_valences:
             valence = sum(idioms_valences) / float(len(idioms_valences))
         return valence
 
     @staticmethod
     def _negation_check(valence, words_and_emoticons, start_i, i):
         words_and_emoticons_lower = [str(w).lower() for w in words_and_emoticons]
-        if start_i == 0:
-            if negated([words_and_emoticons_lower[i - (start_i + 1)]]):  # 1 word preceding lexicon word (w/o stopwords)
-                valence = valence * N_SCALAR
+        if start_i == 0 and negated(
+            [words_and_emoticons_lower[i - (start_i + 1)]]
+        ):
+            valence = valence * N_SCALAR
         if start_i == 1:
-            if words_and_emoticons_lower[i - 2] == "never" and \
-                    (words_and_emoticons_lower[i - 1] == "so" or
-                     words_and_emoticons_lower[i - 1] == "this"):
+            if words_and_emoticons_lower[
+                i - 2
+            ] == "never" and words_and_emoticons_lower[i - 1] in ["so", "this"]:
                 valence = valence * 1.25
             elif words_and_emoticons_lower[i - 2] == "without" and \
                     words_and_emoticons_lower[i - 1] == "doubt":
@@ -415,9 +407,11 @@ class SentimentIntensityAnalyzer(object):
             elif negated([words_and_emoticons_lower[i - (start_i + 1)]]):  # 2 words preceding the lexicon word position
                 valence = valence * N_SCALAR
         if start_i == 2:
-            if words_and_emoticons_lower[i - 3] == "never" and \
-                    (words_and_emoticons_lower[i - 2] == "so" or words_and_emoticons_lower[i - 2] == "this") or \
-                    (words_and_emoticons_lower[i - 1] == "so" or words_and_emoticons_lower[i - 1] == "this"):
+            if (
+                words_and_emoticons_lower[i - 3] == "never"
+                and words_and_emoticons_lower[i - 2] in ["so", "this"]
+                or words_and_emoticons_lower[i - 1] in ["so", "this"]
+            ):
                 valence = valence * 1.25
             elif words_and_emoticons_lower[i - 3] == "without" and \
                     (words_and_emoticons_lower[i - 2] == "doubt" or words_and_emoticons_lower[i - 1] == "doubt"):
@@ -430,33 +424,23 @@ class SentimentIntensityAnalyzer(object):
         # add emphasis from exclamation points and question marks
         ep_amplifier = self._amplify_ep(text)
         qm_amplifier = self._amplify_qm(text)
-        punct_emph_amplifier = ep_amplifier + qm_amplifier
-        return punct_emph_amplifier
+        return ep_amplifier + qm_amplifier
 
     @staticmethod
     def _amplify_ep(text):
         # check for added emphasis resulting from exclamation points (up to 4 of them)
         ep_count = text.count("!")
-        if ep_count > 4:
-            ep_count = 4
-        # (empirically derived mean sentiment intensity rating increase for
-        # exclamation points)
-        ep_amplifier = ep_count * 0.292
-        return ep_amplifier
+        ep_count = min(ep_count, 4)
+        return ep_count * 0.292
 
     @staticmethod
     def _amplify_qm(text):
         # check for added emphasis resulting from question marks (2 or 3+)
         qm_count = text.count("?")
-        qm_amplifier = 0
         if qm_count > 1:
-            if qm_count <= 3:
-                # (empirically derived mean sentiment intensity rating increase for
-                # question marks)
-                qm_amplifier = qm_count * 0.18
-            else:
-                qm_amplifier = 0.96
-        return qm_amplifier
+            return qm_count * 0.18 if qm_count <= 3 else 0.96
+        else:
+            return 0
 
     @staticmethod
     def _sift_sentiment_scores(sentiments):
@@ -503,13 +487,12 @@ class SentimentIntensityAnalyzer(object):
             neg = 0.0
             neu = 0.0
 
-        sentiment_dict = \
-            {"neg": round(neg, 3),
-             "neu": round(neu, 3),
-             "pos": round(pos, 3),
-             "compound": round(compound, 4)}
-
-        return sentiment_dict
+        return {
+            "neg": round(neg, 3),
+            "neu": round(neu, 3),
+            "pos": round(pos, 3),
+            "compound": round(compound, 4),
+        }
 
 
 if __name__ == '__main__':
@@ -659,16 +642,16 @@ if __name__ == '__main__':
                                 "我很惊讶地看到VADER是如此有用!",
                                 "我很驚訝地看到VADER是如此有用!"
                                 ]
+        to_lang = "en"
         for sentence in nonEnglish_sentences:
-            to_lang = "en"
             from_lang = language_codes[nonEnglish_sentences.index(sentence)]
-            if (from_lang == "en") or (from_lang == "en-US"):
+            if from_lang in ["en", "en-US"]:
                 translation = sentence
                 translator_name = "No translation needed"
             else:  # please note usage limits for My Memory Translation Service:   http://mymemory.translated.net/doc/usagelimits.php
                 # using   MY MEMORY NET   http://mymemory.translated.net
-                api_url = "http://mymemory.translated.net/api/get?q={}&langpair={}|{}".format(sentence, from_lang,
-                                                                                              to_lang)
+                api_url = f"http://mymemory.translated.net/api/get?q={sentence}&langpair={from_lang}|{to_lang}"
+
                 hdrs = {
                     'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.11 (KHTML, like Gecko) Chrome/23.0.1271.64 Safari/537.11',
                     'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
